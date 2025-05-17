@@ -1,14 +1,17 @@
 import os
 import json
 import pandas as pd
-import openai
+from openai import OpenAI
 from dotenv import load_dotenv
 import tkinter as tk
 from tkinter import filedialog
 
-# Cargar clave API desde .env
+# Cargar API Key desde .env
 load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=os.getenv("OPENROUTER_API_KEY")
+)
 
 def cargar_alerta(file_path):
     ext = os.path.splitext(file_path)[1].lower()
@@ -22,29 +25,56 @@ def cargar_alerta(file_path):
     else:
         raise ValueError("Formato no soportado. Usa .json o .tsv")
 
-def generar_resumen_con_gpt(alerta_texto):
+def generar_analisis_profesional(alerta_texto):
     prompt = f"""
-Eres un analista de ciberseguridad. Dado el siguiente contenido de alerta, genera un resumen profesional incluyendo:
-1. Significado de la alerta.
-2. Módulo que detectó la amenaza.
-3. Principales atributos del incidente (usuario, host, archivo, hash, etc).
-4. Acción tomada por la plataforma.
-5. Recomendaciones claras.
-Formato profesional, sin emojis, y en español.
+Actúa como un analista de ciberseguridad del equipo MDR.
+
+Dado el contenido crudo de una alerta (en formato JSON o TSV exportado desde Cortex XDR), tu tarea es generar un informe técnico completo siguiendo el flujo de análisis definido por MDR:
+
+=== SECCIONES OBLIGATORIAS ===
+
+1. Nombre de la alerta
+2. Significado técnico y posible contexto de la alerta
+3. Módulo o motor de detección (Analytics, BIOC, Local Analysis, etc.)
+4. Principales atributos:
+   - Usuario
+   - Host
+   - IP local y remota (si existe)
+   - País (si aparece)
+   - Ruta del ejecutable
+   - Proceso padre
+   - Hash SHA256
+   - Firma digital
+5. Revisión de antecedentes si hay evidencia de repitencia o historial
+6. Acción tomada por la plataforma (bloqueo, cuarentena, solo detección, etc.)
+7. Táctica y técnica MITRE ATT&CK si están presentes
+8. Recomendaciones formales de respuesta
+9. Conclusión técnica:
+   - ¿Qué tipo de amenaza podría ser?
+   - ¿Quién podría estar detrás? (APT, script kiddie, malware común, etc.)
+   - ¿Cuál es el nivel de severidad real considerando MITRE?
+
+Después de ese análisis, redacta 3 comentarios breves en español para dejar en el incidente.
+
+Formato profesional. No uses emojis. Solo español.
 
 Contenido de la alerta:
 {alerta_texto}
     """.strip()
 
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3,
-        max_tokens=1000
+    completion = client.chat.completions.create(
+        model="meta-llama/llama-3.3-8b-instruct:free",
+        messages=[
+            {"role": "user", "content": prompt}
+        ],
+        extra_headers={
+            "HTTP-Referer": "https://yourdomain.com",
+            "X-Title": "Analyst_CortexXDR"
+        }
     )
-    return response.choices[0].message.content.strip()
+    return completion.choices[0].message.content.strip()
 
-def ejecutar_analisis_desde_explorador():
+def ejecutar_analisis():
     root = tk.Tk()
     root.withdraw()
     file_path = filedialog.askopenfilename(
@@ -57,15 +87,15 @@ def ejecutar_analisis_desde_explorador():
     print(f"\nArchivo seleccionado: {file_path}\n")
     try:
         alerta = cargar_alerta(file_path)
-        resumen = generar_resumen_con_gpt(alerta)
-        print("\n--- Resumen generado ---\n")
-        print(resumen)
-        with open("resumen_alerta.txt", "w", encoding="utf-8") as f:
-            f.write(resumen)
-        print("\nResumen guardado en resumen_alerta.txt")
+        analisis = generar_analisis_profesional(alerta)
+        print("\n--- Informe de análisis generado ---\n")
+        print(analisis)
+        with open("informe_alerta_mdr.txt", "w", encoding="utf-8") as f:
+            f.write(analisis)
+        print("\nInforme guardado como informe_alerta_mdr.txt")
     except Exception as e:
         print("Error:", str(e))
 
 if __name__ == "__main__":
-    print("== Analyst_CortexXDR ==")
-    ejecutar_analisis_desde_explorador()
+    print("== Analyst_CortexXDR – Análisis MDR Avanzado ==")
+    ejecutar_analisis()
